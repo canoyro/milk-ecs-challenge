@@ -1,0 +1,6 @@
+VpcId: vpc-04571bb185086fe7f
+PubSubnets: subnet-0f3b2f2ec01dcdc0e,subnet-037ae5a57a4969697
+PrivSubnets: subnet-0d24d0f4ac751a2b5,subnet-037ae5a57a4969697
+SecurityGroup: sg-00778e9ef90895626
+ContainerImage: public.ecr.aws/nginx/nginx:1.25.2-alpine-slim
+InstanceType: t2.micro
