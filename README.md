@@ -4,6 +4,8 @@ This project deploys the core MILK Books DevOps challenge stack with AWS CloudFo
 
 ECR, S3, and GitHub Actions are included for image publishing, static asset serving, and rollout automation. CloudFront is intentionally deferred until the ECS service is working end to end.
 
+For a reviewer-focused implementation brief, see `docs/project-summary.md`.
+
 ## Architecture
 
 - Existing VPC, public subnets, and security group are supplied through `parameters.json`.
