@@ -43,9 +43,9 @@ Resources:
       BucketName: !Sub ${AWS::StackName}-static-assets-${AWS::AccountId}-${AWS::Region}
       PublicAccessBlockConfiguration:
         BlockPublicAcls: true
-        BlockPublicPolicy: false
+        BlockPublicPolicy: true
         IgnorePublicAcls: true
-        RestrictPublicBuckets: false
+        RestrictPublicBuckets: true
       OwnershipControls:
         Rules:
           - ObjectOwnership: BucketOwnerEnforced
@@ -61,11 +61,63 @@ Resources:
       PolicyDocument:
         Version: "2012-10-17"
         Statement:
-          - Sid: PublicReadStaticAssets
+          - Sid: AllowCloudFrontReadStaticAssets
             Effect: Allow
-            Principal: "*"
+            Principal:
+              Service: cloudfront.amazonaws.com
             Action: s3:GetObject
             Resource: !Sub ${StaticAssetsBucket.Arn}/assets/*
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub arn:aws:cloudfront::${AWS::AccountId}:distribution/${StaticAssetsDistribution}
+
+  StaticAssetsOriginAccessControl:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub ${AWS::StackName}-static-assets-oac
+        Description: !Sub Origin access control for ${AWS::StackName} static assets.
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  StaticAssetsDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Comment: !Sub ${AWS::StackName} static assets
+        Enabled: true
+        HttpVersion: http2
+        PriceClass: PriceClass_100
+        Origins:
+          - Id: StaticAssetsS3Origin
+            DomainName: !GetAtt StaticAssetsBucket.RegionalDomainName
+            OriginAccessControlId: !GetAtt StaticAssetsOriginAccessControl.Id
+            S3OriginConfig:
+              OriginAccessIdentity: ""
+        DefaultCacheBehavior:
+          TargetOriginId: StaticAssetsS3Origin
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+          CachedMethods:
+            - GET
+            - HEAD
+          Compress: true
+          ForwardedValues:
+            QueryString: false
+            Cookies:
+              Forward: none
+          MinTTL: 0
+          DefaultTTL: 60
+          MaxTTL: 300
+        Restrictions:
+          GeoRestriction:
+            RestrictionType: none
+        ViewerCertificate:
+          CloudFrontDefaultCertificate: true
 
   Cluster:
     Type: AWS::ECS::Cluster
@@ -183,7 +235,7 @@ Resources:
           Memory: 256
           Environment:
             - Name: STATIC_ASSET_BASE_URL
-              Value: !Sub https://${StaticAssetsBucket}.s3.${AWS::Region}.amazonaws.com/assets
+              Value: !Sub https://${StaticAssetsDistribution.DomainName}/assets
           PortMappings:
             - ContainerPort: 80
               HostPort: 80
@@ -285,5 +337,13 @@ Outputs:
     Value: !Ref StaticAssetsBucket
 
   StaticAssetBaseURL:
-    Description: Public base URL for S3 static assets.
-    Value: !Sub https://${StaticAssetsBucket}.s3.${AWS::Region}.amazonaws.com/assets
+    Description: CloudFront base URL for static assets.
+    Value: !Sub https://${StaticAssetsDistribution.DomainName}/assets
+
+  CloudFrontDistributionId:
+    Description: CloudFront distribution ID for static assets.
+    Value: !Ref StaticAssetsDistribution
+
+  CloudFrontDistributionDomainName:
+    Description: CloudFront distribution domain name for static assets.
+    Value: !GetAtt StaticAssetsDistribution.DomainName
