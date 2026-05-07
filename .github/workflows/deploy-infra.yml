@@ -1,0 +1,43 @@
+name: Deploy infrastructure
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "ecs-webapp.yaml"
+      - "parameters.json"
+      - ".github/workflows/deploy-infra.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION || 'ap-southeast-2' }}
+  STACK_NAME: ${{ vars.STACK_NAME || 'milk-ecs-webapp' }}
+
+jobs:
+  deploy-infra:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy CloudFormation
+        run: |
+          parameter_overrides=$(jq -r '.[] | "\(.ParameterKey)=\(.ParameterValue)"' parameters.json)
+
+          aws cloudformation deploy \
+            --stack-name "$STACK_NAME" \
+            --template-file ecs-webapp.yaml \
+            --parameter-overrides $parameter_overrides \
+            --capabilities CAPABILITY_NAMED_IAM

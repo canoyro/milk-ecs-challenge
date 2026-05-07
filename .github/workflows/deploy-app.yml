@@ -1,0 +1,104 @@
+name: Deploy app
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+    paths:
+      - "app/**"
+      - ".github/workflows/deploy-app.yml"
+  workflow_dispatch:
+    inputs:
+      semantic_version:
+        description: Optional semantic image tag, for example 1.0.0
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION || 'ap-southeast-2' }}
+  STACK_NAME: ${{ vars.STACK_NAME || 'milk-ecs-webapp' }}
+  SEMANTIC_VERSION_INPUT: ${{ github.event.inputs.semantic_version || '' }}
+
+jobs:
+  deploy-app:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Get ECR repository URI
+        id: ecr
+        run: |
+          repository_uri=$(aws cloudformation describe-stacks \
+            --stack-name "$STACK_NAME" \
+            --query "Stacks[0].Outputs[?OutputKey=='ECRRepositoryUri'].OutputValue" \
+            --output text)
+
+          echo "repository_uri=$repository_uri" >> "$GITHUB_OUTPUT"
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push image
+        run: |
+          sha_tag="${GITHUB_SHA::12}"
+          repository_uri="${{ steps.ecr.outputs.repository_uri }}"
+          image_uri="$repository_uri:$sha_tag"
+
+          docker build -t "$image_uri" ./app
+
+          semver_tag=""
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            semver_tag="${GITHUB_REF_NAME#v}"
+          elif [ -n "$SEMANTIC_VERSION_INPUT" ]; then
+            semver_tag="$SEMANTIC_VERSION_INPUT"
+          fi
+
+          if [ -n "$semver_tag" ]; then
+            docker tag "$image_uri" "$repository_uri:$semver_tag"
+          fi
+
+          docker push "$image_uri"
+
+          if [ -n "$semver_tag" ]; then
+            docker push "$repository_uri:$semver_tag"
+          fi
+
+          echo "IMAGE_URI=$image_uri" >> "$GITHUB_ENV"
+          echo "SHA_TAG=$sha_tag" >> "$GITHUB_ENV"
+          echo "SEMVER_TAG=$semver_tag" >> "$GITHUB_ENV"
+
+      - name: Deploy app image
+        run: |
+          parameter_overrides=$(jq -r '.[] | select(.ParameterKey != "ContainerImage") | "\(.ParameterKey)=\(.ParameterValue)"' parameters.json)
+
+          aws cloudformation deploy \
+            --stack-name "$STACK_NAME" \
+            --template-file ecs-webapp.yaml \
+            --parameter-overrides $parameter_overrides ContainerImage="$IMAGE_URI" \
+            --capabilities CAPABILITY_NAMED_IAM
+
+      - name: Summarize image tags
+        run: |
+          {
+            echo "### Deployed image"
+            echo ""
+            echo "- Immutable tag: \`$SHA_TAG\`"
+            echo "- Image URI: \`$IMAGE_URI\`"
+            if [ -n "$SEMVER_TAG" ]; then
+              echo "- Semantic tag: \`$SEMVER_TAG\`"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
