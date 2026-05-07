@@ -3,30 +3,50 @@ Description: ECS EC2 Web App Stack
 
 Parameters:
   VpcId:
-    Type: AWS::EC2::VPC::vpc-04571bb185086fe7f
+    Type: AWS::EC2::VPC::Id
+    Description: Existing VPC where the ECS stack will be deployed.
 
-  Subnets:
+  PubSubnets:
     Type: List<AWS::EC2::Subnet::Id>
+    Description: Existing public subnets for the load balancer and ECS instances. Use one subnet per Availability Zone.
 
   SecurityGroup:
-    Type: AWS::EC2::SecurityGroup::sg-00778e9ef90895626
+    Type: AWS::EC2::SecurityGroup::Id
+    Description: Existing security group used by the load balancer and ECS instances.
 
   ContainerImage:
     Type: String
+    Default: nginx:latest
+    Description: Container image to run for the web application.
 
   InstanceType:
     Type: String
     Default: t3.micro
+    Description: EC2 instance type for ECS container instances.
+
+  ECSOptimizedAmi:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ecs/optimized-ami/amazon-linux-2/recommended/image_id
+    Description: Latest ECS optimized Amazon Linux 2 AMI from the AWS public SSM parameter store.
 
 Resources:
-
   Cluster:
     Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Sub ${AWS::StackName}-cluster
+
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /ecs/${AWS::StackName}/web
+      RetentionInDays: 7
 
   ECSInstanceRole:
     Type: AWS::IAM::Role
     Properties:
+      RoleName: !Sub ${AWS::StackName}-ecs-instance-role
       AssumeRolePolicyDocument:
+        Version: "2012-10-17"
         Statement:
           - Effect: Allow
             Principal:
@@ -35,18 +55,34 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role
 
+  TaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${AWS::StackName}-task-execution-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+
   InstanceProfile:
     Type: AWS::IAM::InstanceProfile
     Properties:
+      InstanceProfileName: !Sub ${AWS::StackName}-instance-profile
       Roles:
         - !Ref ECSInstanceRole
 
   LaunchTemplate:
     Type: AWS::EC2::LaunchTemplate
     Properties:
+      LaunchTemplateName: !Sub ${AWS::StackName}-launch-template
       LaunchTemplateData:
         InstanceType: !Ref InstanceType
-        ImageId: ami-xxxxxxxx   # ECS Optimized AMI (update per region)
+        ImageId: !Ref ECSOptimizedAmi
         IamInstanceProfile:
           Arn: !GetAtt InstanceProfile.Arn
         SecurityGroupIds:
@@ -59,19 +95,31 @@ Resources:
   AutoScalingGroup:
     Type: AWS::AutoScaling::AutoScalingGroup
     Properties:
-      VPCZoneIdentifier: !Ref Subnets
-      MinSize: "1"
+      AutoScalingGroupName: !Sub ${AWS::StackName}-asg
+      VPCZoneIdentifier: !Ref PubSubnets
+      MinSize: "2"
       MaxSize: "3"
       DesiredCapacity: "2"
+      HealthCheckType: EC2
+      HealthCheckGracePeriod: 300
       LaunchTemplate:
         LaunchTemplateId: !Ref LaunchTemplate
         Version: !GetAtt LaunchTemplate.LatestVersionNumber
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-ecs-instance
+          PropagateAtLaunch: true
 
   CapacityProvider:
     Type: AWS::ECS::CapacityProvider
     Properties:
+      Name: !Sub ${AWS::StackName}-capacity-provider
       AutoScalingGroupProvider:
         AutoScalingGroupArn: !Ref AutoScalingGroup
+        ManagedScaling:
+          Status: ENABLED
+          TargetCapacity: 100
+        ManagedTerminationProtection: DISABLED
 
   ClusterCapacityProviderAssociations:
     Type: AWS::ECS::ClusterCapacityProviderAssociations
@@ -86,30 +134,54 @@ Resources:
   TaskDefinition:
     Type: AWS::ECS::TaskDefinition
     Properties:
+      Family: !Sub ${AWS::StackName}-web
       NetworkMode: bridge
+      ExecutionRoleArn: !GetAtt TaskExecutionRole.Arn
       RequiresCompatibilities:
         - EC2
       ContainerDefinitions:
         - Name: web
           Image: !Ref ContainerImage
+          Essential: true
           Memory: 256
           PortMappings:
             - ContainerPort: 80
+              HostPort: 80
+              Protocol: tcp
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: web
 
   LoadBalancer:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties:
-      Subnets: !Ref Subnets
+      Name: !Sub ${AWS::StackName}-alb
+      Scheme: internet-facing
+      Type: application
+      Subnets: !Ref PubSubnets
       SecurityGroups:
         - !Ref SecurityGroup
 
   TargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
+      Name: !Sub ${AWS::StackName}-tg
       VpcId: !Ref VpcId
       Port: 80
       Protocol: HTTP
       TargetType: instance
+      HealthCheckEnabled: true
+      HealthCheckPath: /
+      HealthCheckProtocol: HTTP
+      HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 3
+      Matcher:
+        HttpCode: 200-399
 
   Listener:
     Type: AWS::ElasticLoadBalancingV2::Listener
@@ -123,15 +195,43 @@ Resources:
 
   Service:
     Type: AWS::ECS::Service
-    DependsOn: Listener
+    DependsOn:
+      - Listener
+      - ClusterCapacityProviderAssociations
     Properties:
+      ServiceName: !Sub ${AWS::StackName}-service
       Cluster: !Ref Cluster
       DesiredCount: 2
       TaskDefinition: !Ref TaskDefinition
+      DeploymentConfiguration:
+        MinimumHealthyPercent: 50
+        MaximumPercent: 200
       CapacityProviderStrategy:
         - CapacityProvider: !Ref CapacityProvider
           Weight: 1
+      PlacementStrategies:
+        - Type: spread
+          Field: attribute:ecs.availability-zone
+        - Type: spread
+          Field: instanceId
       LoadBalancers:
         - ContainerName: web
           ContainerPort: 80
           TargetGroupArn: !Ref TargetGroup
+
+Outputs:
+  LoadBalancerDNSName:
+    Description: DNS name for the application load balancer.
+    Value: !GetAtt LoadBalancer.DNSName
+
+  ApplicationURL:
+    Description: HTTP URL for the deployed web application.
+    Value: !Sub http://${LoadBalancer.DNSName}
+
+  ECSClusterName:
+    Description: ECS cluster name.
+    Value: !Ref Cluster
+
+  ECSServiceName:
+    Description: ECS service name.
+    Value: !GetAtt Service.Name
