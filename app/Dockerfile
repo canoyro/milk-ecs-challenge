@@ -8,5 +8,7 @@ ENV IMAGE_TAG=${IMAGE_TAG}
 
 COPY index.template.html /usr/share/nginx/templates/index.template.html
 COPY render-index.sh /docker-entrypoint.d/40-render-index.sh
+COPY assets /usr/share/nginx/html/assets
 
-RUN chmod +x /docker-entrypoint.d/40-render-index.sh
+RUN sed -i 's/\r$//' /docker-entrypoint.d/40-render-index.sh \
+    && chmod +x /docker-entrypoint.d/40-render-index.sh

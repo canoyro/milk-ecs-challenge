@@ -4,6 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>MILK Books ECS Web App</title>
+    <link rel="stylesheet" href="__STATIC_ASSET_BASE_URL__/theme.css">
     <style>
       :root {
         color-scheme: light;
@@ -75,9 +76,11 @@
   </head>
   <body>
     <main>
+      <img class="brand-mark" src="__STATIC_ASSET_BASE_URL__/milk-mark.svg" alt="MILK Books demo mark" width="72" height="72">
       <h1>MILK Books ECS Web App</h1>
       <p>This page is served from a custom container running on ECS EC2 launch type behind an Application Load Balancer.</p>
       <p>Refresh the ALB URL several times. Different task or container instance values confirm that load balancing is reaching multiple ECS tasks.</p>
+      <p>The logo and theme accents are static assets served from S3.</p>
 
       <dl>
         <dt>App version</dt>

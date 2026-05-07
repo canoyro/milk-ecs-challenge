@@ -49,6 +49,20 @@ jobs:
 
           echo "repository_uri=$repository_uri" >> "$GITHUB_OUTPUT"
 
+      - name: Get static assets bucket
+        id: static-assets
+        run: |
+          bucket_name=$(aws cloudformation describe-stacks \
+            --stack-name "$STACK_NAME" \
+            --query "Stacks[0].Outputs[?OutputKey=='StaticAssetsBucketName'].OutputValue" \
+            --output text)
+
+          echo "bucket_name=$bucket_name" >> "$GITHUB_OUTPUT"
+
+      - name: Sync static assets to S3
+        run: |
+          aws s3 sync ./app/assets "s3://${{ steps.static-assets.outputs.bucket_name }}/assets" --delete
+
       - name: Login to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v2
 

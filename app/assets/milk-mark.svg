@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-labelledby="title desc">
+  <title id="title">MILK Books demo mark</title>
+  <desc id="desc">A simple geometric mark used as an S3-served static asset.</desc>
+  <rect width="96" height="96" rx="18" fill="#0f766e"/>
+  <path fill="#ffffff" d="M24 68V28h10l14 20 14-20h10v40H60V47L48 64 36 47v21H24z"/>
+</svg>
