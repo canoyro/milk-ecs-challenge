@@ -2,7 +2,9 @@
 
 This project deploys the core MILK Books DevOps challenge stack with AWS CloudFormation. It creates an ECS cluster using the EC2 launch type, runs a simple containerized web application, spreads two service tasks across two ECS container instances, and exposes the service through an Application Load Balancer.
 
-ECR, S3, and GitHub Actions are included for image publishing, static asset serving, and rollout automation. CloudFront is intentionally deferred until the ECS service is working end to end.
+ECR, S3, CloudFront, and GitHub Actions are included for image publishing, static asset serving, CDN delivery, and rollout automation.
+
+For a reviewer-focused implementation brief, see `docs/project-summary.md`.
 
 For a reviewer-focused implementation brief, see `docs/project-summary.md`.
 
@@ -12,7 +14,8 @@ For a reviewer-focused implementation brief, see `docs/project-summary.md`.
 - The public subnets must be in different Availability Zones because the Application Load Balancer cannot attach to multiple subnets in the same Availability Zone.
 - Stack-created resources use the CloudFormation stack name as their name prefix, for example `milk-ecs-webapp-cluster`, `milk-ecs-webapp-asg`, and `milk-ecs-webapp-alb`.
 - An ECR repository stores the custom web app image.
-- An S3 bucket serves static assets such as CSS and the demo logo under the `assets/` prefix.
+- An S3 bucket stores static assets such as CSS and the demo logo under the `assets/` prefix.
+- CloudFront serves the S3 static assets through a CDN using Origin Access Control.
 - An Auto Scaling Group launches two ECS optimized Amazon Linux 2 EC2 instances.
 - The ECS agent registers both instances into the ECS cluster during boot.
 - An ECS capacity provider connects the Auto Scaling Group to the cluster.
@@ -25,7 +28,7 @@ For a reviewer-focused implementation brief, see `docs/project-summary.md`.
 
 - AWS CLI v2 installed and configured.
 - Docker installed and running for local app builds.
-- An AWS identity with permission to create CloudFormation, ECR, S3, ECS, EC2, Auto Scaling, IAM, Elastic Load Balancing, CloudWatch Logs, and SSM parameter resources.
+- An AWS identity with permission to create CloudFormation, CloudFront, ECR, S3, ECS, EC2, Auto Scaling, IAM, Elastic Load Balancing, CloudWatch Logs, and SSM parameter resources.
 - Existing VPC, public subnets, and security group.
 - The security group must allow inbound HTTP traffic to the load balancer and allow the load balancer to reach port 80 on the ECS instances.
 - If the same security group is used for both the ALB and ECS instances, add an inbound HTTP rule with the security group itself as the source.
@@ -93,9 +96,9 @@ docker push "$repository_uri:v1"
 
 Update `ContainerImage` in `parameters.json` to the pushed ECR image URI, for example `123456789012.dkr.ecr.ap-southeast-2.amazonaws.com/milk-ecs-webapp-webapp:v1`.
 
-## Upload Static Assets To S3
+## Upload Static Assets
 
-The stack creates an S3 bucket for static assets and exposes its public asset base URL to the ECS task as `STATIC_ASSET_BASE_URL`. The app uses that URL for `theme.css` and `milk-mark.svg`.
+The stack creates an S3 bucket for static assets and a CloudFront distribution in front of it. The ECS task receives the CloudFront asset base URL through `STATIC_ASSET_BASE_URL`. The app uses that URL for `theme.css` and `milk-mark.svg`.
 
 Upload the local assets after the stack has created the bucket:
 
@@ -108,7 +111,7 @@ static_bucket=$(aws cloudformation describe-stacks \
 aws s3 sync ./app/assets "s3://$static_bucket/assets" --delete
 ```
 
-Verify one public static asset:
+Verify one static asset through CloudFront:
 
 ```bash
 static_asset_base_url=$(aws cloudformation describe-stacks \
@@ -116,10 +119,12 @@ static_asset_base_url=$(aws cloudformation describe-stacks \
   --query "Stacks[0].Outputs[?OutputKey=='StaticAssetBaseURL'].OutputValue" \
   --output text)
 
-curl "$static_asset_base_url/theme.css"
+curl -I "$static_asset_base_url/theme.css"
 ```
 
-The S3 bucket policy allows public read access only for objects under `assets/*`. This keeps the demo simple and low-cost without CloudFront. In production, CloudFront with Origin Access Control would be preferred.
+The S3 bucket is read through CloudFront Origin Access Control. Direct public S3 reads are not required for the app.
+
+CloudFront uses a short cache TTL for this demo, so updated assets may take up to a few minutes to refresh without a manual invalidation.
 
 ## Deploy
 
@@ -220,6 +225,7 @@ It deploys or updates the CloudFormation stack only. It does not build or push a
 The workflow at `.github/workflows/deploy-app.yml` runs when app files change:
 
 - `app/**`
+- `scripts/**`
 - `.github/workflows/deploy-app.yml`
 
 It reads the ECR repository URI from stack outputs, syncs `app/assets` to S3, builds `app/`, pushes an immutable image tag using the first 12 characters of the Git commit SHA, then redeploys CloudFormation with `ContainerImage` set to that exact ECR image URI.
@@ -234,7 +240,7 @@ Configure these repository settings before running the workflow:
 
 The GitHub OIDC role needs permissions for CloudFormation deploys, ECR image push, and the AWS resources created by this template.
 
-If you use a least-privilege custom IAM policy for the GitHub Actions role, include `cloudformation:GetTemplateSummary`, `ssm:GetParameters`, and S3 permissions to sync objects into `arn:aws:s3:::milk-ecs-webapp-static-assets-581145854871-ap-southeast-2/assets/*`. The AWS CLI `cloudformation deploy` command calls `cloudformation:GetTemplateSummary`, and CloudFormation calls `ssm:GetParameters` to resolve the public ECS optimized AMI parameter.
+If you use a least-privilege custom IAM policy for the GitHub Actions role, include `cloudformation:GetTemplateSummary`, `ssm:GetParameters`, CloudFront permissions for the distribution and origin access control, and S3 permissions to sync objects into `arn:aws:s3:::milk-ecs-webapp-static-assets-581145854871-ap-southeast-2/assets/*`. The AWS CLI `cloudformation deploy` command calls `cloudformation:GetTemplateSummary`, and CloudFormation calls `ssm:GetParameters` to resolve the public ECS optimized AMI parameter.
 
 ## Developer Workflow
 
