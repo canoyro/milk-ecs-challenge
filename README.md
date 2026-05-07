@@ -2,7 +2,7 @@
 
 This project deploys the core MILK Books DevOps challenge stack with AWS CloudFormation. It creates an ECS cluster using the EC2 launch type, runs a simple containerized web application, spreads two service tasks across two ECS container instances, and exposes the service through an Application Load Balancer.
 
-ECR and GitHub Actions are included for automated image publishing and rollout. S3 and CloudFront are intentionally deferred until the ECS service is working end to end.
+ECR, S3, and GitHub Actions are included for image publishing, static asset serving, and rollout automation. CloudFront is intentionally deferred until the ECS service is working end to end.
 
 ## Architecture
 
@@ -10,6 +10,7 @@ ECR and GitHub Actions are included for automated image publishing and rollout. 
 - The public subnets must be in different Availability Zones because the Application Load Balancer cannot attach to multiple subnets in the same Availability Zone.
 - Stack-created resources use the CloudFormation stack name as their name prefix, for example `milk-ecs-webapp-cluster`, `milk-ecs-webapp-asg`, and `milk-ecs-webapp-alb`.
 - An ECR repository stores the custom web app image.
+- An S3 bucket serves static assets such as CSS and the demo logo under the `assets/` prefix.
 - An Auto Scaling Group launches two ECS optimized Amazon Linux 2 EC2 instances.
 - The ECS agent registers both instances into the ECS cluster during boot.
 - An ECS capacity provider connects the Auto Scaling Group to the cluster.
@@ -22,7 +23,7 @@ ECR and GitHub Actions are included for automated image publishing and rollout. 
 
 - AWS CLI v2 installed and configured.
 - Docker installed and running for local app builds.
-- An AWS identity with permission to create CloudFormation, ECR, ECS, EC2, Auto Scaling, IAM, Elastic Load Balancing, CloudWatch Logs, and SSM parameter resources.
+- An AWS identity with permission to create CloudFormation, ECR, S3, ECS, EC2, Auto Scaling, IAM, Elastic Load Balancing, CloudWatch Logs, and SSM parameter resources.
 - Existing VPC, public subnets, and security group.
 - The security group must allow inbound HTTP traffic to the load balancer and allow the load balancer to reach port 80 on the ECS instances.
 - If the same security group is used for both the ALB and ECS instances, add an inbound HTTP rule with the security group itself as the source.
@@ -89,6 +90,34 @@ docker push "$repository_uri:v1"
 ```
 
 Update `ContainerImage` in `parameters.json` to the pushed ECR image URI, for example `123456789012.dkr.ecr.ap-southeast-2.amazonaws.com/milk-ecs-webapp-webapp:v1`.
+
+## Upload Static Assets To S3
+
+The stack creates an S3 bucket for static assets and exposes its public asset base URL to the ECS task as `STATIC_ASSET_BASE_URL`. The app uses that URL for `theme.css` and `milk-mark.svg`.
+
+Upload the local assets after the stack has created the bucket:
+
+```bash
+static_bucket=$(aws cloudformation describe-stacks \
+  --stack-name milk-ecs-webapp \
+  --query "Stacks[0].Outputs[?OutputKey=='StaticAssetsBucketName'].OutputValue" \
+  --output text)
+
+aws s3 sync ./app/assets "s3://$static_bucket/assets" --delete
+```
+
+Verify one public static asset:
+
+```bash
+static_asset_base_url=$(aws cloudformation describe-stacks \
+  --stack-name milk-ecs-webapp \
+  --query "Stacks[0].Outputs[?OutputKey=='StaticAssetBaseURL'].OutputValue" \
+  --output text)
+
+curl "$static_asset_base_url/theme.css"
+```
+
+The S3 bucket policy allows public read access only for objects under `assets/*`. This keeps the demo simple and low-cost without CloudFront. In production, CloudFront with Origin Access Control would be preferred.
 
 ## Deploy
 
@@ -191,7 +220,7 @@ The workflow at `.github/workflows/deploy-app.yml` runs when app files change:
 - `app/**`
 - `.github/workflows/deploy-app.yml`
 
-It reads the ECR repository URI from stack outputs, builds `app/`, pushes an immutable image tag using the first 12 characters of the Git commit SHA, then redeploys CloudFormation with `ContainerImage` set to that exact ECR image URI.
+It reads the ECR repository URI from stack outputs, syncs `app/assets` to S3, builds `app/`, pushes an immutable image tag using the first 12 characters of the Git commit SHA, then redeploys CloudFormation with `ContainerImage` set to that exact ECR image URI.
 
 Do not use `latest` for ECS deployments. The deployed image should be an immutable Git SHA tag so every running task maps back to a specific commit. For release tags such as `v1.0.0`, the app workflow also pushes a semantic image tag such as `1.0.0`, but still deploys the Git SHA tag.
 
@@ -203,7 +232,53 @@ Configure these repository settings before running the workflow:
 
 The GitHub OIDC role needs permissions for CloudFormation deploys, ECR image push, and the AWS resources created by this template.
 
-If you use a least-privilege custom IAM policy for the GitHub Actions role, include `cloudformation:GetTemplateSummary`. The AWS CLI `cloudformation deploy` command calls this action before creating or updating the change set.
+If you use a least-privilege custom IAM policy for the GitHub Actions role, include `cloudformation:GetTemplateSummary`, `ssm:GetParameters`, and S3 permissions to sync objects into `arn:aws:s3:::milk-ecs-webapp-static-assets-581145854871-ap-southeast-2/assets/*`. The AWS CLI `cloudformation deploy` command calls `cloudformation:GetTemplateSummary`, and CloudFormation calls `ssm:GetParameters` to resolve the public ECS optimized AMI parameter.
+
+## Developer Workflow
+
+Use pull requests into `main` as the deployment boundary. Feature branches are safe to push because the deployment workflows only run for `main` or release tags.
+
+For application changes, edit files under `app/`, test the image locally, then open a pull request:
+
+```bash
+docker build -t milk-ecs-webapp:dev ./app
+docker run --rm -p 8080:80 milk-ecs-webapp:dev
+curl http://localhost:8080
+```
+
+After the PR is merged to `main`, `.github/workflows/deploy-app.yml` runs. It builds the app image, pushes an immutable Git SHA tag to ECR, and updates the ECS service by redeploying CloudFormation with that exact image URI.
+
+For infrastructure changes, edit `ecs-webapp.yaml`, `parameters.json`, or `.github/workflows/deploy-infra.yml`, then validate locally:
+
+```bash
+aws cloudformation validate-template --template-body file://ecs-webapp.yaml
+```
+
+After the PR is merged to `main`, `.github/workflows/deploy-infra.yml` runs. It deploys CloudFormation only and does not build or push an app image.
+
+For a named release, create and push a Git tag:
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+The app workflow deploys the immutable Git SHA tag and also pushes a semantic ECR tag without using it as the deployed value. This keeps rollbacks precise while still giving humans a readable release tag.
+
+To roll back, redeploy a previous immutable image tag:
+
+```bash
+aws cloudformation deploy \
+  --stack-name milk-ecs-webapp \
+  --template-file ecs-webapp.yaml \
+  --parameter-overrides \
+    VpcId=vpc-04571bb185086fe7f \
+    PubSubnets=subnet-0f3b2f2ec01dcdc0e,subnet-070016a5fa27ca914 \
+    SecurityGroup=sg-00778e9ef90895626 \
+    InstanceType=t3.micro \
+    ContainerImage=581145854871.dkr.ecr.ap-southeast-2.amazonaws.com/milk-ecs-webapp-webapp:<previous-sha> \
+  --capabilities CAPABILITY_NAMED_IAM
+```
 
 ## Validate
 
@@ -215,4 +290,15 @@ aws cloudformation validate-template --template-body file://ecs-webapp.yaml
 
 ```bash
 aws cloudformation delete-stack --stack-name milk-ecs-webapp
+```
+
+If static assets have been uploaded, empty the S3 bucket before deleting the stack:
+
+```bash
+static_bucket=$(aws cloudformation describe-stacks \
+  --stack-name milk-ecs-webapp \
+  --query "Stacks[0].Outputs[?OutputKey=='StaticAssetsBucketName'].OutputValue" \
+  --output text)
+
+aws s3 rm "s3://$static_bucket" --recursive
 ```

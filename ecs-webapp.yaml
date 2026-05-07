@@ -37,6 +37,36 @@ Resources:
       ImageScanningConfiguration:
         ScanOnPush: true
 
+  StaticAssetsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub ${AWS::StackName}-static-assets-${AWS::AccountId}-${AWS::Region}
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: false
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: false
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+  StaticAssetsBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref StaticAssetsBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: PublicReadStaticAssets
+            Effect: Allow
+            Principal: "*"
+            Action: s3:GetObject
+            Resource: !Sub ${StaticAssetsBucket.Arn}/assets/*
+
   Cluster:
     Type: AWS::ECS::Cluster
     Properties:
@@ -151,6 +181,9 @@ Resources:
           Image: !Ref ContainerImage
           Essential: true
           Memory: 256
+          Environment:
+            - Name: STATIC_ASSET_BASE_URL
+              Value: !Sub https://${StaticAssetsBucket}.s3.${AWS::Region}.amazonaws.com/assets
           PortMappings:
             - ContainerPort: 80
               HostPort: 80
@@ -246,3 +279,11 @@ Outputs:
   ECRRepositoryUri:
     Description: ECR repository URI for the web app image.
     Value: !GetAtt WebAppRepository.RepositoryUri
+
+  StaticAssetsBucketName:
+    Description: S3 bucket name for static web assets.
+    Value: !Ref StaticAssetsBucket
+
+  StaticAssetBaseURL:
+    Description: Public base URL for S3 static assets.
+    Value: !Sub https://${StaticAssetsBucket}.s3.${AWS::Region}.amazonaws.com/assets

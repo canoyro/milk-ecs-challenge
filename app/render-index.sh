@@ -8,6 +8,9 @@ task_arn="local-task"
 container_instance_arn="local-container-instance"
 availability_zone="local"
 hostname_value="$(hostname)"
+static_asset_base_url="${STATIC_ASSET_BASE_URL:-/assets}"
+app_version="${APP_VERSION:-dev}"
+image_tag="${IMAGE_TAG:-local}"
 
 json_value() {
   key="$1"
@@ -38,9 +41,12 @@ escape_html() {
 }
 
 sed \
+  -e "s#__APP_VERSION__#$(escape_html "$app_version")#g" \
+  -e "s#__IMAGE_TAG__#$(escape_html "$image_tag")#g" \
   -e "s#__TASK_ID__#$(escape_html "$task_id")#g" \
   -e "s#__TASK_ARN__#$(escape_html "$task_arn")#g" \
   -e "s#__CONTAINER_INSTANCE_ARN__#$(escape_html "$container_instance_arn")#g" \
   -e "s#__AVAILABILITY_ZONE__#$(escape_html "$availability_zone")#g" \
   -e "s#__HOSTNAME__#$(escape_html "$hostname_value")#g" \
+  -e "s#__STATIC_ASSET_BASE_URL__#$(escape_html "$static_asset_base_url")#g" \
   "$template" > "$output"

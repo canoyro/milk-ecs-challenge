@@ -1,0 +1,12 @@
+.brand-mark {
+  display: block;
+  margin-bottom: 20px;
+}
+
+main {
+  border-top: 6px solid #0f766e;
+}
+
+.version {
+  border: 1px solid #bfdbfe;
+}
