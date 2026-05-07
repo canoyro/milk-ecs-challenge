@@ -6,6 +6,8 @@ ECR, S3, CloudFront, and GitHub Actions are included for image publishing, stati
 
 For a reviewer-focused implementation brief, see `docs/project-summary.md`.
 
+For a reviewer-focused implementation brief, see `docs/project-summary.md`.
+
 ## Architecture
 
 - Existing VPC, public subnets, and security group are supplied through `parameters.json`.
