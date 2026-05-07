@@ -2,6 +2,6 @@
   { "ParameterKey": "VpcId", "ParameterValue": "vpc-04571bb185086fe7f" },
   { "ParameterKey": "PubSubnets", "ParameterValue": "subnet-0f3b2f2ec01dcdc0e,subnet-070016a5fa27ca914" },
   { "ParameterKey": "SecurityGroup", "ParameterValue": "sg-00778e9ef90895626" },
-  { "ParameterKey": "ContainerImage", "ParameterValue": "nginx:latest" },
+  { "ParameterKey": "ContainerImage", "ParameterValue": "581145854871.dkr.ecr.ap-southeast-2.amazonaws.com/milk-ecs-webapp-webapp:v1" },
   { "ParameterKey": "InstanceType", "ParameterValue": "t3.micro" }
 ]
