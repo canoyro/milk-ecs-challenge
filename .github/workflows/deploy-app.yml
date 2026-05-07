@@ -58,14 +58,20 @@ jobs:
           repository_uri="${{ steps.ecr.outputs.repository_uri }}"
           image_uri="$repository_uri:$sha_tag"
 
-          docker build -t "$image_uri" ./app
-
           semver_tag=""
           if [ "$GITHUB_REF_TYPE" = "tag" ]; then
             semver_tag="${GITHUB_REF_NAME#v}"
           elif [ -n "$SEMANTIC_VERSION_INPUT" ]; then
             semver_tag="$SEMANTIC_VERSION_INPUT"
           fi
+
+          app_version="${semver_tag:-$sha_tag}"
+
+          docker build \
+            --build-arg APP_VERSION="$app_version" \
+            --build-arg IMAGE_TAG="$sha_tag" \
+            -t "$image_uri" \
+            ./app
 
           if [ -n "$semver_tag" ]; then
             docker tag "$image_uri" "$repository_uri:$semver_tag"
@@ -80,6 +86,7 @@ jobs:
           echo "IMAGE_URI=$image_uri" >> "$GITHUB_ENV"
           echo "SHA_TAG=$sha_tag" >> "$GITHUB_ENV"
           echo "SEMVER_TAG=$semver_tag" >> "$GITHUB_ENV"
+          echo "APP_VERSION=$app_version" >> "$GITHUB_ENV"
 
       - name: Deploy app image
         run: |
@@ -97,6 +104,7 @@ jobs:
             echo "### Deployed image"
             echo ""
             echo "- Immutable tag: \`$SHA_TAG\`"
+            echo "- App version: \`$APP_VERSION\`"
             echo "- Image URI: \`$IMAGE_URI\`"
             if [ -n "$SEMVER_TAG" ]; then
               echo "- Semantic tag: \`$SEMVER_TAG\`"
