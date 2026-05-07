@@ -30,6 +30,13 @@ Parameters:
     Description: Latest ECS optimized Amazon Linux 2 AMI from the AWS public SSM parameter store.
 
 Resources:
+  WebAppRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Sub ${AWS::StackName}-webapp
+      ImageScanningConfiguration:
+        ScanOnPush: true
+
   Cluster:
     Type: AWS::ECS::Cluster
     Properties:
@@ -235,3 +242,7 @@ Outputs:
   ECSServiceName:
     Description: ECS service name.
     Value: !GetAtt Service.Name
+
+  ECRRepositoryUri:
+    Description: ECR repository URI for the web app image.
+    Value: !GetAtt WebAppRepository.RepositoryUri

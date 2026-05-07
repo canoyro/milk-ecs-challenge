@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>MILK Books ECS Web App</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: Arial, Helvetica, sans-serif;
+        color: #1f2933;
+        background: #f5f7fa;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+      }
+
+      main {
+        width: min(820px, calc(100% - 40px));
+        padding: 40px;
+        border: 1px solid #d8dee8;
+        border-radius: 8px;
+        background: #ffffff;
+        box-shadow: 0 16px 40px rgba(15, 23, 42, 0.08);
+      }
+
+      h1 {
+        margin: 0 0 12px;
+        font-size: 32px;
+        line-height: 1.15;
+      }
+
+      p {
+        margin: 8px 0;
+        font-size: 16px;
+        line-height: 1.6;
+      }
+
+      dl {
+        display: grid;
+        grid-template-columns: 160px 1fr;
+        gap: 10px 16px;
+        margin: 28px 0 0;
+        padding: 20px;
+        border-radius: 8px;
+        background: #f8fafc;
+      }
+
+      dt {
+        font-weight: 700;
+        color: #52606d;
+      }
+
+      dd {
+        margin: 0;
+        overflow-wrap: anywhere;
+        font-family: Consolas, Monaco, monospace;
+        color: #102a43;
+      }
+
+      .version {
+        display: inline-block;
+        margin-top: 20px;
+        padding: 6px 10px;
+        border-radius: 6px;
+        background: #e8f1ff;
+        color: #0f4c81;
+        font-weight: 700;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>MILK Books ECS Web App</h1>
+      <p>This page is served from a custom container running on ECS EC2 launch type behind an Application Load Balancer.</p>
+      <p>Refresh the ALB URL several times. Different task or container instance values confirm that load balancing is reaching multiple ECS tasks.</p>
+
+      <dl>
+        <dt>Task ID</dt>
+        <dd>__TASK_ID__</dd>
+        <dt>Task ARN</dt>
+        <dd>__TASK_ARN__</dd>
+        <dt>Container instance</dt>
+        <dd>__CONTAINER_INSTANCE_ARN__</dd>
+        <dt>Availability Zone</dt>
+        <dd>__AVAILABILITY_ZONE__</dd>
+        <dt>Hostname</dt>
+        <dd>__HOSTNAME__</dd>
+      </dl>
+
+      <span class="version">Version v1</span>
+    </main>
+  </body>
+</html>
