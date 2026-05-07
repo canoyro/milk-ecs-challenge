@@ -203,6 +203,8 @@ Configure these repository settings before running the workflow:
 
 The GitHub OIDC role needs permissions for CloudFormation deploys, ECR image push, and the AWS resources created by this template.
 
+If you use a least-privilege custom IAM policy for the GitHub Actions role, include `cloudformation:GetTemplateSummary`. The AWS CLI `cloudformation deploy` command calls this action before creating or updating the change set.
+
 ## Validate
 
 ```bash
