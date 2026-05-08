@@ -174,7 +174,9 @@ done
 
 ## Roll Out A New App Version
 
-Edit `app/index.template.html`, change the visible version from `v1` to `v2`, then build and push a new immutable image tag:
+The preferred release path is GitHub Actions. Change files under `app/`, open a pull request, and merge it into `main`. The app workflow builds the image, tags it with the Git commit SHA, pushes it to ECR, and redeploys the ECS service with that immutable image URI.
+
+For a manual fallback, build and push an explicit image tag:
 
 ```bash
 repository_uri=$(aws cloudformation describe-stacks \
@@ -182,28 +184,30 @@ repository_uri=$(aws cloudformation describe-stacks \
   --query "Stacks[0].Outputs[?OutputKey=='ECRRepositoryUri'].OutputValue" \
   --output text)
 
-docker build -t milk-ecs-webapp:v2 ./app
-docker tag milk-ecs-webapp:v2 "$repository_uri:v2"
-docker push "$repository_uri:v2"
+image_tag=$(git rev-parse --short=12 HEAD)
+
+docker build \
+  --build-arg APP_VERSION="$image_tag" \
+  --build-arg IMAGE_TAG="$image_tag" \
+  -t "$repository_uri:$image_tag" \
+  ./app
+
+docker push "$repository_uri:$image_tag"
 ```
 
-Change `ContainerImage` in `parameters.json` to the new tag:
-
-```json
-{ "ParameterKey": "ContainerImage", "ParameterValue": "123456789012.dkr.ecr.ap-southeast-2.amazonaws.com/milk-ecs-webapp-webapp:v2" }
-```
-
-Redeploy the stack:
+Redeploy CloudFormation with the new image:
 
 ```bash
+parameter_overrides=$(jq -r '.[] | select(.ParameterKey != "ContainerImage") | "\(.ParameterKey)=\(.ParameterValue)"' parameters.json)
+
 aws cloudformation deploy \
   --stack-name milk-ecs-webapp \
   --template-file ecs-webapp.yaml \
-  --parameter-overrides file://parameters.json \
+  --parameter-overrides $parameter_overrides ContainerImage="$repository_uri:$image_tag" \
   --capabilities CAPABILITY_NAMED_IAM
 ```
 
-CloudFormation registers a new task definition revision and ECS rolls the service to the new image.
+CloudFormation registers a new task definition revision and ECS rolls the service to the new image. The app displays the image tag so the running version is visible in the browser.
 
 ## GitHub Actions Deployment
 
@@ -220,6 +224,7 @@ It deploys or updates the CloudFormation stack only. It does not build or push a
 The workflow at `.github/workflows/deploy-app.yml` runs when app files change:
 
 - `app/**`
+- `scripts/**`
 - `.github/workflows/deploy-app.yml`
 
 It reads the ECR repository URI from stack outputs, syncs `app/assets` to S3, builds `app/`, pushes an immutable image tag using the first 12 characters of the Git commit SHA, then redeploys CloudFormation with `ContainerImage` set to that exact ECR image URI.
@@ -270,15 +275,17 @@ The app workflow deploys the immutable Git SHA tag and also pushes a semantic EC
 To roll back, redeploy a previous immutable image tag:
 
 ```bash
+repository_uri=$(aws cloudformation describe-stacks \
+  --stack-name milk-ecs-webapp \
+  --query "Stacks[0].Outputs[?OutputKey=='ECRRepositoryUri'].OutputValue" \
+  --output text)
+
+parameter_overrides=$(jq -r '.[] | select(.ParameterKey != "ContainerImage") | "\(.ParameterKey)=\(.ParameterValue)"' parameters.json)
+
 aws cloudformation deploy \
   --stack-name milk-ecs-webapp \
   --template-file ecs-webapp.yaml \
-  --parameter-overrides \
-    VpcId=vpc-04571bb185086fe7f \
-    PubSubnets=subnet-0f3b2f2ec01dcdc0e,subnet-070016a5fa27ca914 \
-    SecurityGroup=sg-00778e9ef90895626 \
-    InstanceType=t3.micro \
-    ContainerImage=581145854871.dkr.ecr.ap-southeast-2.amazonaws.com/milk-ecs-webapp-webapp:<previous-sha> \
+  --parameter-overrides $parameter_overrides ContainerImage="$repository_uri:<previous-sha>" \
   --capabilities CAPABILITY_NAMED_IAM
 ```
 
