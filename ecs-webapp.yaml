@@ -135,7 +135,7 @@ Resources:
       AutoScalingGroupName: !Sub ${AWS::StackName}-asg
       VPCZoneIdentifier: !Ref PubSubnets
       MinSize: "2"
-      MaxSize: "3"
+      MaxSize: "4"
       DesiredCapacity: "2"
       HealthCheckType: EC2
       HealthCheckGracePeriod: 300
