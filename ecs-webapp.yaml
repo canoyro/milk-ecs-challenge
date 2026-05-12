@@ -244,7 +244,7 @@ Resources:
       DesiredCount: 2
       TaskDefinition: !Ref TaskDefinition
       DeploymentConfiguration:
-        MinimumHealthyPercent: 100
+        MinimumHealthyPercent: 50
         MaximumPercent: 200
       CapacityProviderStrategy:
         - CapacityProvider: !Ref CapacityProvider
