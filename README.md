@@ -131,11 +131,42 @@ aws cloudformation deploy \
   --capabilities CAPABILITY_NAMED_IAM
 ```
 
+## CDK TypeScript Version
+
+The `cdk/` directory contains a TypeScript CDK implementation of the same ECS EC2 web app stack. It is included as a bonus version while keeping the original CloudFormation template available for direct comparison.
+
+Install dependencies and synthesize the CDK stack:
+
+```bash
+cd cdk
+npm install
+npx cdk synth \
+  -c vpcId=vpc-04571bb185086fe7f \
+  -c publicSubnetIds=subnet-0f3b2f2ec01dcdc0e,subnet-070016a5fa27ca914 \
+  -c securityGroupId=sg-00778e9ef90895626 \
+  -c containerImage=nginx:latest \
+  -c instanceType=t3.micro
+```
+
+Deploy the CDK stack:
+
+```bash
+npx cdk bootstrap
+npx cdk deploy \
+  -c vpcId=vpc-04571bb185086fe7f \
+  -c publicSubnetIds=subnet-0f3b2f2ec01dcdc0e,subnet-070016a5fa27ca914 \
+  -c securityGroupId=sg-00778e9ef90895626 \
+  -c containerImage=nginx:latest \
+  -c instanceType=t3.micro
+```
+
+The CDK stack creates the same core resources as `ecs-webapp.yaml`: ECR, the S3 static assets bucket, ECS cluster, EC2 Auto Scaling capacity provider, bridge-mode task definition, ECS service, Application Load Balancer, target group, listener, CloudWatch Logs, and IAM roles.
+
 Get the application URL:
 
 ```bash
 aws cloudformation describe-stacks \
-  --stack-name milk-ecs-webapp \
+  --stack-name milk-ecs-webapp-cdk \
   --query "Stacks[0].Outputs[?OutputKey=='ApplicationURL'].OutputValue" \
   --output text
 ```
