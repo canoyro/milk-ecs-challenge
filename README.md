@@ -140,6 +140,7 @@ Install dependencies and synthesize the CDK stack:
 ```bash
 cd cdk
 npm install
+npm run build
 npx cdk synth \
   -c vpcId=vpc-04571bb185086fe7f \
   -c publicSubnetIds=subnet-0f3b2f2ec01dcdc0e,subnet-070016a5fa27ca914 \
