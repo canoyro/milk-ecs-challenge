@@ -152,7 +152,10 @@ npx cdk synth \
 Deploy the CDK stack:
 
 ```bash
-npx cdk bootstrap
+npx cdk bootstrap aws://581145854871/ap-southeast-2 \
+  -c vpcId=vpc-04571bb185086fe7f \
+  -c publicSubnetIds=subnet-0f3b2f2ec01dcdc0e,subnet-070016a5fa27ca914 \
+  -c securityGroupId=sg-00778e9ef90895626
 npx cdk deploy \
   -c vpcId=vpc-04571bb185086fe7f \
   -c publicSubnetIds=subnet-0f3b2f2ec01dcdc0e,subnet-070016a5fa27ca914 \
@@ -272,6 +275,46 @@ Configure these repository settings before running the workflow:
 The GitHub OIDC role needs permissions for CloudFormation deploys, ECR image push, and the AWS resources created by this template.
 
 If you use a least-privilege custom IAM policy for the GitHub Actions role, include `cloudformation:GetTemplateSummary`, `ssm:GetParameters`, and S3 permissions to sync objects into `arn:aws:s3:::milk-ecs-webapp-static-assets-581145854871-ap-southeast-2/assets/*`. The AWS CLI `cloudformation deploy` command calls `cloudformation:GetTemplateSummary`, and CloudFormation calls `ssm:GetParameters` to resolve the public ECS optimized AMI parameter.
+
+## CDK GitHub Actions Deployment
+
+The CDK implementation has separate workflows so it can be tested without replacing the original CloudFormation deployment.
+
+The workflow at `.github/workflows/deploy-cdk-infra.yml` runs when CDK infrastructure files change:
+
+- `cdk/**`
+- `.github/workflows/deploy-cdk-infra.yml`
+
+It installs CDK dependencies, builds the TypeScript app, checks that the AWS account and region have been bootstrapped with `CDKToolkit`, synthesizes the stack, and deploys the CDK stack.
+
+The workflow at `.github/workflows/deploy-cdk-app.yml` runs when app files change:
+
+- `app/**`
+- `scripts/get-stack-outputs.sh`
+- `scripts/resolve-image-metadata.sh`
+- `cdk/scripts/deploy-cdk.sh`
+- `.github/workflows/deploy-cdk-app.yml`
+
+It reads outputs from the CDK stack, syncs `app/assets` to the CDK-created S3 bucket, builds and pushes the web app image to the CDK-created ECR repository, then redeploys the CDK stack with `containerImage` set to the immutable Git SHA image URI.
+
+Bootstrap the target account and region before running either CDK workflow:
+
+```bash
+cd cdk
+npx cdk bootstrap aws://581145854871/ap-southeast-2 \
+  -c vpcId=vpc-04571bb185086fe7f \
+  -c publicSubnetIds=subnet-0f3b2f2ec01dcdc0e,subnet-070016a5fa27ca914 \
+  -c securityGroupId=sg-00778e9ef90895626
+```
+
+Configure these additional repository variables for the CDK workflows if the defaults are not correct:
+
+- Variable `CDK_STACK_NAME`: CDK stack name, defaulting to `milk-ecs-webapp-cdk`.
+- Variable `CDK_VPC_ID`: existing VPC ID.
+- Variable `CDK_PUBLIC_SUBNET_IDS`: comma-separated public subnet IDs.
+- Variable `CDK_SECURITY_GROUP_ID`: existing security group ID.
+- Variable `CDK_CONTAINER_IMAGE`: initial container image for infrastructure deploys, defaulting to `nginx:latest`.
+- Variable `CDK_INSTANCE_TYPE`: ECS instance type, defaulting to `t3.micro`.
 
 ## Developer Workflow
 
