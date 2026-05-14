@@ -1,0 +1,86 @@
+name: Deploy CDK infrastructure
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "cdk/**"
+      - ".github/workflows/deploy-cdk-infra.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION || 'ap-southeast-2' }}
+  CDK_STACK_NAME: ${{ vars.CDK_STACK_NAME || 'milk-ecs-webapp-cdk' }}
+  CDK_VPC_ID: ${{ vars.CDK_VPC_ID || 'vpc-04571bb185086fe7f' }}
+  CDK_PUBLIC_SUBNET_IDS: ${{ vars.CDK_PUBLIC_SUBNET_IDS || 'subnet-0f3b2f2ec01dcdc0e,subnet-070016a5fa27ca914' }}
+  CDK_SECURITY_GROUP_ID: ${{ vars.CDK_SECURITY_GROUP_ID || 'sg-00778e9ef90895626' }}
+  CDK_CONTAINER_IMAGE: ${{ vars.CDK_CONTAINER_IMAGE || 'nginx:latest' }}
+  CDK_INSTANCE_TYPE: ${{ vars.CDK_INSTANCE_TYPE || 't3.micro' }}
+
+jobs:
+  deploy-cdk-infra:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: cdk/package-lock.json
+
+      - name: Install CDK dependencies
+        working-directory: cdk
+        run: npm ci
+
+      - name: Build CDK app
+        working-directory: cdk
+        run: npm run build
+
+      - name: Check CDK bootstrap
+        run: |
+          aws ssm get-parameter --name /cdk-bootstrap/hnb659fds/version >/dev/null
+
+      - name: Synthesize CDK stack
+        working-directory: cdk
+        run: |
+          npx cdk synth "$CDK_STACK_NAME" \
+            -c vpcId="$CDK_VPC_ID" \
+            -c publicSubnetIds="$CDK_PUBLIC_SUBNET_IDS" \
+            -c securityGroupId="$CDK_SECURITY_GROUP_ID" \
+            -c containerImage="$CDK_CONTAINER_IMAGE" \
+            -c instanceType="$CDK_INSTANCE_TYPE"
+
+      - name: Deploy CDK stack
+        run: |
+          bash cdk/scripts/deploy-cdk.sh
+
+      - name: Summarize CDK outputs
+        run: |
+          outputs=$(aws cloudformation describe-stacks \
+            --stack-name "$CDK_STACK_NAME" \
+            --query "Stacks[0].Outputs" \
+            --output json)
+
+          {
+            echo "### CDK stack"
+            echo ""
+            echo "- Stack: \`$CDK_STACK_NAME\`"
+            echo "- Application URL: \`$(echo "$outputs" | jq -r '.[] | select(.OutputKey == "ApplicationURL") | .OutputValue')\`"
+            echo "- ECR repository: \`$(echo "$outputs" | jq -r '.[] | select(.OutputKey == "ECRRepositoryUri") | .OutputValue')\`"
+            echo "- Static assets bucket: \`$(echo "$outputs" | jq -r '.[] | select(.OutputKey == "StaticAssetsBucketName") | .OutputValue')\`"
+          } >> "$GITHUB_STEP_SUMMARY"
