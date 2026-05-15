@@ -24,7 +24,6 @@ permissions:
   id-token: write
 
 env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   AWS_REGION: ${{ vars.AWS_REGION || 'ap-southeast-2' }}
   STACK_NAME: ${{ vars.CDK_STACK_NAME || 'milk-ecs-webapp-cdk' }}
   CDK_STACK_NAME: ${{ vars.CDK_STACK_NAME || 'milk-ecs-webapp-cdk' }}
@@ -40,10 +39,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ secrets.AWS_CDK_ROLE_TO_ASSUME }}
           aws-region: ${{ env.AWS_REGION }}
@@ -59,7 +58,7 @@ jobs:
           fi
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
