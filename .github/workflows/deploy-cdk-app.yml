@@ -24,6 +24,7 @@ permissions:
   id-token: write
 
 env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   AWS_REGION: ${{ vars.AWS_REGION || 'ap-southeast-2' }}
   STACK_NAME: ${{ vars.CDK_STACK_NAME || 'milk-ecs-webapp-cdk' }}
   CDK_STACK_NAME: ${{ vars.CDK_STACK_NAME || 'milk-ecs-webapp-cdk' }}
@@ -50,7 +51,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: cdk/package-lock.json
 
