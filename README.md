@@ -285,7 +285,7 @@ The workflow at `.github/workflows/deploy-cdk-infra.yml` runs when CDK infrastru
 - `cdk/**`
 - `.github/workflows/deploy-cdk-infra.yml`
 
-It installs CDK dependencies, builds the TypeScript app, checks that the AWS account and region have been bootstrapped with `CDKToolkit`, synthesizes the stack, and deploys the CDK stack.
+It assumes the dedicated CDK GitHub Actions role, installs CDK dependencies, builds the TypeScript app, checks that the AWS account and region have been bootstrapped with `CDKToolkit`, synthesizes the stack, and deploys the CDK stack.
 
 The workflow at `.github/workflows/deploy-cdk-app.yml` runs when app files change:
 
@@ -295,7 +295,7 @@ The workflow at `.github/workflows/deploy-cdk-app.yml` runs when app files chang
 - `cdk/scripts/deploy-cdk.sh`
 - `.github/workflows/deploy-cdk-app.yml`
 
-It reads outputs from the CDK stack, syncs `app/assets` to the CDK-created S3 bucket, builds and pushes the web app image to the CDK-created ECR repository, then redeploys the CDK stack with `containerImage` set to the immutable Git SHA image URI.
+It assumes the dedicated CDK GitHub Actions role, reads outputs from the CDK stack, syncs `app/assets` to the CDK-created S3 bucket, builds and pushes the web app image to the CDK-created ECR repository, then redeploys the CDK stack with `containerImage` set to the immutable Git SHA image URI.
 
 Bootstrap the target account and region before running either CDK workflow:
 
@@ -306,6 +306,18 @@ npx cdk bootstrap aws://581145854871/ap-southeast-2 \
   -c publicSubnetIds=subnet-0f3b2f2ec01dcdc0e,subnet-070016a5fa27ca914 \
   -c securityGroupId=sg-00778e9ef90895626
 ```
+
+Create or update the dedicated CDK GitHub Actions IAM role:
+
+```bash
+bash cdk/scripts/create-cdk-github-actions-role.sh
+```
+
+The script creates `github-actions-milk-ecs-cdk` by default and attaches permissions for CDK bootstrap role assumption, CDK stack output reads, CDK static asset sync, and CDK ECR image pushes. It does not replace the original `AWS_ROLE_TO_ASSUME` role used by the CloudFormation workflows.
+
+Set this repository secret after creating the role:
+
+- Secret `AWS_CDK_ROLE_TO_ASSUME`: IAM role ARN for CDK workflows, default role name `github-actions-milk-ecs-cdk`.
 
 Configure these additional repository variables for the CDK workflows if the defaults are not correct:
 
