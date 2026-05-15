@@ -48,6 +48,16 @@ jobs:
           role-to-assume: ${{ secrets.AWS_CDK_ROLE_TO_ASSUME }}
           aws-region: ${{ env.AWS_REGION }}
 
+      - name: Confirm CDK deployment role
+        run: |
+          caller_arn=$(aws sts get-caller-identity --query Arn --output text)
+          echo "Caller ARN: $caller_arn"
+
+          if [[ "$caller_arn" != *":assumed-role/github-actions-milk-ecs-cdk/"* ]]; then
+            echo "Expected CDK role github-actions-milk-ecs-cdk, got: $caller_arn" >&2
+            exit 1
+          fi
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
