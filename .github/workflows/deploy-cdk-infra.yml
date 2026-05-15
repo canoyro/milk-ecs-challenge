@@ -14,6 +14,7 @@ permissions:
   id-token: write
 
 env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   AWS_REGION: ${{ vars.AWS_REGION || 'ap-southeast-2' }}
   CDK_STACK_NAME: ${{ vars.CDK_STACK_NAME || 'milk-ecs-webapp-cdk' }}
   CDK_VPC_ID: ${{ vars.CDK_VPC_ID || 'vpc-04571bb185086fe7f' }}
@@ -39,7 +40,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: cdk/package-lock.json
 
@@ -51,9 +52,14 @@ jobs:
         working-directory: cdk
         run: npm run build
 
-      - name: Check CDK bootstrap
+      - name: Bootstrap CDK environment
         run: |
-          aws ssm get-parameter --name /cdk-bootstrap/hnb659fds/version >/dev/null
+          account_id=$(aws sts get-caller-identity --query Account --output text)
+
+          npx cdk bootstrap "aws://$account_id/$AWS_REGION" \
+            -c vpcId="$CDK_VPC_ID" \
+            -c publicSubnetIds="$CDK_PUBLIC_SUBNET_IDS" \
+            -c securityGroupId="$CDK_SECURITY_GROUP_ID"
 
       - name: Synthesize CDK stack
         working-directory: cdk
