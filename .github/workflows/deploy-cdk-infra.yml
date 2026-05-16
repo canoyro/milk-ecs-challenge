@@ -61,14 +61,9 @@ jobs:
         working-directory: cdk
         run: npm run build
 
-      - name: Bootstrap CDK environment
+      - name: Check CDK bootstrap
         run: |
-          account_id=$(aws sts get-caller-identity --query Account --output text)
-
-          npx cdk bootstrap "aws://$account_id/$AWS_REGION" \
-            -c vpcId="$CDK_VPC_ID" \
-            -c publicSubnetIds="$CDK_PUBLIC_SUBNET_IDS" \
-            -c securityGroupId="$CDK_SECURITY_GROUP_ID"
+          aws ssm get-parameter --name /cdk-bootstrap/hnb659fds/version >/dev/null
 
       - name: Synthesize CDK stack
         working-directory: cdk

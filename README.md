@@ -285,7 +285,7 @@ The workflow at `.github/workflows/deploy-cdk-infra.yml` runs when CDK infrastru
 - `cdk/**`
 - `.github/workflows/deploy-cdk-infra.yml`
 
-It assumes the dedicated CDK GitHub Actions role, installs CDK dependencies, builds the TypeScript app, checks that the AWS account and region have been bootstrapped with `CDKToolkit`, synthesizes the stack, and deploys the CDK stack.
+It assumes the dedicated CDK GitHub Actions role, installs CDK dependencies, builds the TypeScript app, verifies that the AWS account and region have already been bootstrapped with `CDKToolkit`, synthesizes the stack, and deploys the CDK stack.
 
 The workflow at `.github/workflows/deploy-cdk-app.yml` runs when app files change:
 
@@ -297,7 +297,7 @@ The workflow at `.github/workflows/deploy-cdk-app.yml` runs when app files chang
 
 It assumes the dedicated CDK GitHub Actions role, reads outputs from the CDK stack, syncs `app/assets` to the CDK-created S3 bucket, builds and pushes the web app image to the CDK-created ECR repository, then redeploys the CDK stack with `containerImage` set to the immutable Git SHA image URI.
 
-Bootstrap the target account and region before running either CDK workflow:
+Bootstrap the target account and region manually before running either CDK workflow. Use an admin-capable local AWS identity for this one-time setup; the GitHub Actions CDK role intentionally does not manage `CDKToolkit` IAM resources.
 
 ```bash
 cd cdk
@@ -313,7 +313,7 @@ Create or update the dedicated CDK GitHub Actions IAM role:
 bash cdk/scripts/create-cdk-github-actions-role.sh
 ```
 
-The script creates `github-actions-milk-ecs-cdk` by default and attaches permissions for CDK bootstrap role assumption, CDK stack output reads, CDK static asset sync, and CDK ECR image pushes. It does not replace the original `AWS_ROLE_TO_ASSUME` role used by the CloudFormation workflows.
+The script creates `github-actions-milk-ecs-cdk` by default and attaches permissions for CDK bootstrap role assumption, CDK stack output reads, CDK static asset sync, and CDK ECR image pushes. It does not create or update the `CDKToolkit` stack, and it does not replace the original `AWS_ROLE_TO_ASSUME` role used by the CloudFormation workflows.
 
 Set this repository secret after creating the role:
 
