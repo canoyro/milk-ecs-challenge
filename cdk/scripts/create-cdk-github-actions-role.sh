@@ -154,7 +154,6 @@ cat > "$bootstrap_policy" <<JSON
         "cloudformation:DeleteChangeSet",
         "cloudformation:DescribeChangeSet",
         "cloudformation:DescribeStacks",
-        "cloudformation:DescribeEvents",
         "cloudformation:DescribeStackEvents",
         "cloudformation:DescribeStackResources",
         "cloudformation:GetTemplate",
@@ -162,6 +161,15 @@ cat > "$bootstrap_policy" <<JSON
         "cloudformation:UpdateStack"
       ],
       "Resource": "arn:aws:cloudformation:${region}:${account_id}:stack/CDKToolkit/*"
+    },
+    {
+      "Sid": "ReadCdkToolkitChangeSetEvents",
+      "Effect": "Allow",
+      "Action": "cloudformation:DescribeEvents",
+      "Resource": [
+        "arn:aws:cloudformation:${region}:${account_id}:stack/CDKToolkit/*",
+        "arn:aws:cloudformation:${region}:${account_id}:changeSet/*"
+      ]
     }
   ]
 }
