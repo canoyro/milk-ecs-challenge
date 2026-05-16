@@ -12,7 +12,8 @@ oidc_provider_arn="arn:aws:iam::${account_id}:oidc-provider/token.actions.github
 
 trust_policy="$(mktemp)"
 permissions_policy="$(mktemp)"
-trap 'rm -f "$trust_policy" "$permissions_policy"' EXIT
+bootstrap_policy="$(mktemp)"
+trap 'rm -f "$trust_policy" "$permissions_policy" "$bootstrap_policy"' EXIT
 
 file_uri() {
   if command -v cygpath >/dev/null 2>&1; then
@@ -140,6 +141,32 @@ cat > "$permissions_policy" <<JSON
 }
 JSON
 
+cat > "$bootstrap_policy" <<JSON
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ManageCdkToolkitChangeSets",
+      "Effect": "Allow",
+      "Action": [
+        "cloudformation:CreateChangeSet",
+        "cloudformation:ExecuteChangeSet",
+        "cloudformation:DeleteChangeSet",
+        "cloudformation:DescribeChangeSet",
+        "cloudformation:DescribeStacks",
+        "cloudformation:DescribeEvents",
+        "cloudformation:DescribeStackEvents",
+        "cloudformation:DescribeStackResources",
+        "cloudformation:GetTemplate",
+        "cloudformation:CreateStack",
+        "cloudformation:UpdateStack"
+      ],
+      "Resource": "arn:aws:cloudformation:${region}:${account_id}:stack/CDKToolkit/*"
+    }
+  ]
+}
+JSON
+
 if aws iam get-role --role-name "$role_name" >/dev/null 2>&1; then
   aws iam update-assume-role-policy \
     --role-name "$role_name" \
@@ -154,6 +181,11 @@ aws iam put-role-policy \
   --role-name "$role_name" \
   --policy-name AllowCdkGitHubDeployments \
   --policy-document "$(file_uri "$permissions_policy")"
+
+aws iam put-role-policy \
+  --role-name "$role_name" \
+  --policy-name AllowCdkGitHubBootstrap \
+  --policy-document "$(file_uri "$bootstrap_policy")"
 
 echo "Created or updated arn:aws:iam::${account_id}:role/${role_name}"
 echo "Set GitHub secret AWS_CDK_ROLE_TO_ASSUME to arn:aws:iam::${account_id}:role/${role_name}"
